@@ -492,7 +492,7 @@ class MailAlerts extends Module
 
 		$quantity = (int)$params['quantity'];
 		$context = Context::getContext();
-		$id_shop = (int)$context->shop->id;
+		$id_shop = (Shop::getContext() == Shop::CONTEXT_SHOP) ? (int)$context->shop->id : null;
 		$id_lang = (int)$context->language->id;
 		$product = new Product($id_product, false, $id_lang, $id_shop, $context);
 		$product_has_attributes = $product->hasAttributes();
@@ -508,8 +508,15 @@ class MailAlerts extends Module
 
 		$check_oos = ($product_has_attributes && $id_product_attribute) || (!$product_has_attributes && !$id_product_attribute);
 
+		$productActive = false;
+		if (Shop::getContext() == Shop::CONTEXT_SHOP) {
+			$productActive = $product->active;
+		} else {
+			$productActive = $this->isActiveInShopGroup($id_product, (int)Shop::getContextShopGroupID());
+		}
+
 		if ($check_oos &&
-			$product->active == 1 &&
+			$productActive == 1 &&
 			(int)$quantity <= $ma_last_qties &&
 			!(!$this->merchant_oos || empty($this->merchant_mails)) &&
 			$configuration['PS_STOCK_MANAGEMENT'])
@@ -1072,5 +1079,22 @@ class MailAlerts extends Module
 			'MA_ORDER_EDIT' => Tools::getValue('MA_ORDER_EDIT', Configuration::get('MA_ORDER_EDIT')),
 			'MA_RETURN_SLIP' => Tools::getValue('MA_RETURN_SLIP', Configuration::get('MA_RETURN_SLIP')),
 		);
+	}
+
+	/**
+	 * //check if the product is activated at least in a Group shop
+	 * @param int $idProduct
+	 * @param int $idShopGroup
+	 * @return boolean
+	 */
+	public function isActiveInShopGroup($idProduct, $idShopGroup)
+	{
+		$result = (bool)Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
+				SELECT ps.`id_product`
+				FROM `' . _DB_PREFIX_ . 'product_shop` ps
+				INNER JOIN `' . _DB_PREFIX_ . 'shop` s  ON (ps.`id_shop` = s.`id_shop`)
+				WHERE ps.`id_product` = ' . $idProduct . ' AND ps.`active` = 1 AND s.`id_shop_group` = ' . (int)$idShopGroup);
+
+		return (!empty($result));
 	}
 }
